@@ -22,9 +22,19 @@ def obtener_partidos():
     for partido in data["response"]:
 
         match = Match(
+
+            fixture_id=partido["fixture"]["id"],
+
+            league_id=partido["league"]["id"],
+            season=partido["league"]["season"],
+
+            home_team_id=partido["teams"]["home"]["id"],
+            away_team_id=partido["teams"]["away"]["id"],
+
             liga=partido["league"]["name"],
             local=partido["teams"]["home"]["name"],
             visitante=partido["teams"]["away"]["name"],
+
             estadio=partido["fixture"]["venue"]["name"],
             ciudad=partido["fixture"]["venue"]["city"],
             arbitro=partido["fixture"]["referee"],
@@ -42,6 +52,13 @@ def mostrar_partidos(matches):
     for match in matches:
 
         print("=" * 40)
+        print(f"Fixture ID: {match.fixture_id}")
+        print(f"League ID : {match.league_id}")
+        print(f"Season    : {match.season}")
+        print(f"Home ID   : {match.home_team_id}")
+        print(f"Away ID   : {match.away_team_id}")
+        print()
+
         print(f"Liga: {match.liga}")
         print(f"Partido: {match.local} vs {match.visitante}")
         print(f"Estadio: {match.estadio}")
