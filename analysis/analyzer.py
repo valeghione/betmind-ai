@@ -1,14 +1,20 @@
 from database.database import Database
 
 
-def analizar_forma_equipo(team_id, limite=5, condicion=None):
+def analizar_forma_equipo(
+    team_id,
+    limite=5,
+    condicion=None,
+    fecha_hasta=None
+):
 
     db = Database()
 
     partidos = db.obtener_ultimos_partidos_equipo(
         team_id,
         limite,
-        condicion
+        condicion,
+        fecha_hasta
     )
 
     db.cerrar()
@@ -104,25 +110,64 @@ def mostrar_forma(titulo, estadisticas):
         print("No hay partidos disponibles.")
         return
 
-    print(f"Partidos analizados: {estadisticas['partidos']}")
+    print(
+        f"Partidos analizados: "
+        f"{estadisticas['partidos']}"
+    )
 
     print()
-    print(f"Victorias: {estadisticas['victorias']}")
-    print(f"Empates: {estadisticas['empates']}")
-    print(f"Derrotas: {estadisticas['derrotas']}")
+    print(
+        f"Victorias: "
+        f"{estadisticas['victorias']}"
+    )
+
+    print(
+        f"Empates: "
+        f"{estadisticas['empates']}"
+    )
+
+    print(
+        f"Derrotas: "
+        f"{estadisticas['derrotas']}"
+    )
 
     print()
-    print(f"Goles a favor: {estadisticas['goles_favor']}")
-    print(f"Goles en contra: {estadisticas['goles_contra']}")
+    print(
+        f"Goles a favor: "
+        f"{estadisticas['goles_favor']}"
+    )
+
+    print(
+        f"Goles en contra: "
+        f"{estadisticas['goles_contra']}"
+    )
 
     print()
-    print(f"Promedio GF: {estadisticas['promedio_gf']:.2f}")
-    print(f"Promedio GC: {estadisticas['promedio_gc']:.2f}")
+    print(
+        f"Promedio GF: "
+        f"{estadisticas['promedio_gf']:.2f}"
+    )
+
+    print(
+        f"Promedio GC: "
+        f"{estadisticas['promedio_gc']:.2f}"
+    )
 
     print()
-    print(f"Over 1.5: {estadisticas['over_1_5'] * 100:.1f}%")
-    print(f"Over 2.5: {estadisticas['over_2_5'] * 100:.1f}%")
-    print(f"BTTS: {estadisticas['btts'] * 100:.1f}%")
+    print(
+        f"Over 1.5: "
+        f"{estadisticas['over_1_5'] * 100:.1f}%"
+    )
+
+    print(
+        f"Over 2.5: "
+        f"{estadisticas['over_2_5'] * 100:.1f}%"
+    )
+
+    print(
+        f"BTTS: "
+        f"{estadisticas['btts'] * 100:.1f}%"
+    )
 
     print("=" * 40)
 

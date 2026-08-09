@@ -30,13 +30,47 @@ def calcular_goles_esperados(forma_local, forma_visitante):
     }
 
 
-def analizar_ventana(team_id, limite, condicion):
+def analizar_ventana(
+    local_id,
+    visitante_id,
+    ventana,
+    fecha_hasta
+):
 
-    return analizar_forma_equipo(
-        team_id,
-        limite=limite,
-        condicion=condicion
+    forma_local = analizar_forma_equipo(
+        local_id,
+        limite=ventana,
+        condicion="local",
+        fecha_hasta=fecha_hasta
     )
+
+    forma_visitante = analizar_forma_equipo(
+        visitante_id,
+        limite=ventana,
+        condicion="visitante",
+        fecha_hasta=fecha_hasta
+    )
+
+    if forma_local is None or forma_visitante is None:
+
+        return None
+
+    goles_esperados = calcular_goles_esperados(
+        forma_local,
+        forma_visitante
+    )
+
+    probabilidades = calcular_probabilidades_partido(
+        goles_esperados["local"],
+        goles_esperados["visitante"]
+    )
+
+    return {
+        "forma_local": forma_local,
+        "forma_visitante": forma_visitante,
+        "goles_esperados": goles_esperados,
+        "probabilidades": probabilidades
+    }
 
 
 def analizar_partido(fixture_id):
@@ -56,46 +90,26 @@ def analizar_partido(fixture_id):
     local_id = partido["home_team_id"]
     visitante_id = partido["away_team_id"]
 
-    analisis_ventanas = {}
+    fecha_hasta = partido["fecha"]
+
+    ventanas = {}
 
     for ventana in VENTANAS:
 
-        forma_local = analizar_ventana(
+        resultado = analizar_ventana(
             local_id,
-            ventana,
-            "local"
-        )
-
-        forma_visitante = analizar_ventana(
             visitante_id,
             ventana,
-            "visitante"
+            fecha_hasta
         )
 
-        if forma_local is None or forma_visitante is None:
+        if resultado is not None:
 
-            continue
-
-        goles_esperados = calcular_goles_esperados(
-            forma_local,
-            forma_visitante
-        )
-
-        probabilidades = calcular_probabilidades_partido(
-            goles_esperados["local"],
-            goles_esperados["visitante"]
-        )
-
-        analisis_ventanas[ventana] = {
-            "forma_local": forma_local,
-            "forma_visitante": forma_visitante,
-            "goles_esperados": goles_esperados,
-            "probabilidades": probabilidades
-        }
+            ventanas[ventana] = resultado
 
     return {
         "partido": partido,
-        "ventanas": analisis_ventanas
+        "ventanas": ventanas
     }
 
 
@@ -109,7 +123,7 @@ def mostrar_analisis(analisis):
 
     print()
     print("=" * 60)
-    print("ANÁLISIS MULTIVENTANA")
+    print("BACKTEST - ANÁLISIS HISTÓRICO")
     print("=" * 60)
 
     print()
@@ -118,7 +132,13 @@ def mostrar_analisis(analisis):
     )
 
     print(f"Liga: {partido['liga']}")
-    print(f"Fecha: {partido['fecha']}")
+    print(f"Fecha del partido: {partido['fecha']}")
+
+    print()
+    print(
+        "IMPORTANTE: solo se utilizan partidos "
+        "anteriores a la fecha del encuentro."
+    )
 
     for ventana, datos in ventanas.items():
 
@@ -129,7 +149,7 @@ def mostrar_analisis(analisis):
 
         print()
         print("-" * 60)
-        print(f"ÚLTIMOS {ventana}")
+        print(f"ÚLTIMOS {ventana} ANTERIORES AL PARTIDO")
         print("-" * 60)
 
         print()
@@ -150,7 +170,7 @@ def mostrar_analisis(analisis):
         )
 
         print()
-        print("GOLES")
+        print("GOLES PROMEDIO")
 
         print(
             f"{partido['local']} GF: "
@@ -186,7 +206,7 @@ def mostrar_analisis(analisis):
         )
 
         print(
-            f"TOTAL: "
+            f"Total: "
             f"{goles['total']:.2f}"
         )
 
@@ -209,6 +229,11 @@ def mostrar_analisis(analisis):
         )
 
         print(
+            f"Over 1.5: "
+            f"{probabilidades['over_1_5'] * 100:.1f}%"
+        )
+
+        print(
             f"Over 2.5: "
             f"{probabilidades['over_2_5'] * 100:.1f}%"
         )
@@ -219,6 +244,17 @@ def mostrar_analisis(analisis):
         )
 
     print()
+    print("=" * 60)
+
+    print()
+    print("RESULTADO REAL")
+    print(
+        f"{partido['local']} "
+        f"{partido['goles_local']} - "
+        f"{partido['goles_visitante']} "
+        f"{partido['visitante']}"
+    )
+
     print("=" * 60)
 
 
