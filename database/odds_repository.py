@@ -18,6 +18,48 @@ def guardar_snapshot(
 
     db = Database()
 
+    # --------------------------------------------------------
+    # Verificar si ya existe exactamente el mismo snapshot.
+    #
+    # Mismo:
+    # event_id
+    # bookmaker
+    # cuota_local
+    # cuota_empate
+    # cuota_visitante
+    #
+    # Si la cuota cambia, se guarda un nuevo snapshot.
+    # --------------------------------------------------------
+
+    db.cursor.execute("""
+        SELECT id
+        FROM odds_snapshots
+        WHERE event_id = ?
+        AND bookmaker = ?
+        AND cuota_local = ?
+        AND cuota_empate = ?
+        AND cuota_visitante = ?
+        LIMIT 1
+    """, (
+        event_id,
+        bookmaker,
+        cuota_local,
+        cuota_empate,
+        cuota_visitante
+    ))
+
+    existente = db.cursor.fetchone()
+
+    if existente is not None:
+
+        db.cerrar()
+
+        return False
+
+    # --------------------------------------------------------
+    # Guardar nuevo snapshot
+    # --------------------------------------------------------
+
     db.cursor.execute("""
         INSERT INTO odds_snapshots (
             event_id,
@@ -43,6 +85,8 @@ def guardar_snapshot(
 
     db.connection.commit()
     db.cerrar()
+
+    return True
 
 
 # ============================================================
@@ -80,12 +124,15 @@ def guardar_resultado(
 ):
 
     if goles_local > goles_visitante:
+
         resultado = "local"
 
     elif goles_local == goles_visitante:
+
         resultado = "empate"
 
     else:
+
         resultado = "visitante"
 
     db = Database()
@@ -156,13 +203,17 @@ def guardar_value(
     db = Database()
 
     # --------------------------------------------------------
-    # Evitar duplicar exactamente la misma oportunidad
-    # mientras el scanner se ejecuta varias veces.
+    # Evitar duplicar exactamente la misma oportunidad.
     #
-    # Si ya existe una oportunidad abierta para:
-    # event_id + mercado
+    # Mismo:
+    # event_id
+    # mercado
+    # cuota
     #
-    # no volvemos a crear otra.
+    # Si cambia la cuota, se permite un nuevo registro.
+    #
+    # También se permite un nuevo registro si el anterior
+    # ya fue liquidado.
     # --------------------------------------------------------
 
     db.cursor.execute("""
@@ -170,11 +221,13 @@ def guardar_value(
         FROM value_opportunities
         WHERE event_id = ?
         AND mercado = ?
+        AND cuota = ?
         AND resultado IS NULL
         LIMIT 1
     """, (
         event_id,
-        mercado
+        mercado,
+        cuota
     ))
 
     existente = db.cursor.fetchone()
@@ -184,6 +237,10 @@ def guardar_value(
         db.cerrar()
 
         return False
+
+    # --------------------------------------------------------
+    # Guardar nueva oportunidad
+    # --------------------------------------------------------
 
     db.cursor.execute("""
         INSERT INTO value_opportunities (

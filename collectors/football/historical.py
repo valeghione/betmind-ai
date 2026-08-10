@@ -1,8 +1,46 @@
 import sys
 
-from .client import FootballAPIClient
 from models.match import Match
 from database.database import Database
+
+
+ARGENTINA_PRIMERA_LPF_LEAGUE_ID = 128
+FINAL_STATUSES = {"FT", "AET", "PEN"}
+SUPPORTED_SEASONS = (2023, 2024, 2025, 2026)
+
+
+def es_fixture_historico_valido(partido, league_id):
+
+    fixture = partido.get("fixture") or {}
+    league = partido.get("league") or {}
+    goals = partido.get("goals") or {}
+    status = fixture.get("status") or {}
+
+    fixture_id = fixture.get("id")
+    fecha = fixture.get("date")
+    estado = status.get("short")
+
+    if league.get("id") != league_id:
+        return False
+
+    if estado not in FINAL_STATUSES:
+        return False
+
+    try:
+        fixture_id_valido = int(fixture_id) > 0
+    except (TypeError, ValueError):
+        fixture_id_valido = False
+
+    if not fixture_id_valido:
+        return False
+
+    if not fecha:
+        return False
+
+    return (
+        goals.get("home") is not None
+        and goals.get("away") is not None
+    )
 
 
 def obtener_historico(league_id, season):
@@ -12,6 +50,8 @@ def obtener_historico(league_id, season):
     print(f"Liga ID: {league_id}")
     print(f"Temporada: {season}")
     print()
+
+    from .client import FootballAPIClient
 
     api = FootballAPIClient()
 
@@ -32,7 +72,17 @@ def obtener_historico(league_id, season):
 
     partidos = []
 
+    descartados = 0
+
     for partido in data["response"]:
+
+        if not es_fixture_historico_valido(
+            partido,
+            league_id
+        ):
+
+            descartados += 1
+            continue
 
         fixture = partido["fixture"]
         league = partido["league"]
@@ -68,6 +118,14 @@ def obtener_historico(league_id, season):
 
         partidos.append(match)
 
+    print(
+        f"Históricos finalizados válidos: {len(partidos)}"
+    )
+
+    print(
+        f"Fixtures descartados: {descartados}"
+    )
+
     return partidos
 
 
@@ -79,60 +137,58 @@ def guardar_historico(partidos):
 
     for partido in partidos:
 
-        db.guardar_partido(partido)
+        db.guardar_partido_historico(partido)
 
     db.cerrar()
 
 
 def main():
 
-    league_id = 128
-
     if len(sys.argv) > 1:
 
-        season = int(sys.argv[1])
+        seasons = [int(season) for season in sys.argv[1:]]
 
     else:
 
-        season = 2024
+        seasons = list(SUPPORTED_SEASONS)
 
-    partidos = obtener_historico(
-        league_id=league_id,
-        season=season
-    )
+    invalidas = [
+        season
+        for season in seasons
+        if season not in SUPPORTED_SEASONS
+    ]
 
-    print(
-        f"Partidos procesados: {len(partidos)}"
-    )
+    if invalidas:
 
-    if partidos:
+        print(
+            "Temporadas no soportadas: "
+            + ", ".join(map(str, invalidas))
+        )
+
+        return
+
+    for season in seasons:
+
+        partidos = obtener_historico(
+            league_id=ARGENTINA_PRIMERA_LPF_LEAGUE_ID,
+            season=season
+        )
+
+        print(
+            f"Partidos procesados ({season}): {len(partidos)}"
+        )
+
+        if not partidos:
+
+            print("No se guardaron partidos.")
+
+            continue
 
         guardar_historico(partidos)
 
-        print()
         print(
             "Histórico guardado correctamente en SQLite."
         )
-
-        print()
-        print("Primer partido:")
-
-        primer_partido = partidos[0]
-
-        print(
-            f"{primer_partido.local} "
-            f"vs "
-            f"{primer_partido.visitante}"
-        )
-
-        print(
-            f"Fecha: {primer_partido.fecha}"
-        )
-
-    else:
-
-        print()
-        print("No se guardaron partidos.")
 
 
 if __name__ == "__main__":

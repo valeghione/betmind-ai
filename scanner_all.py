@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import unicodedata
 import requests
 
@@ -35,6 +36,9 @@ LEAGUE = (
 )
 
 MIN_EV = 0.00
+
+# Espera entre consultas de cuotas
+ODDS_DELAY = 1.5
 
 
 # ============================================================
@@ -533,9 +537,10 @@ def guardar_odds_snapshot(
 
     try:
 
-        guardar_snapshot(
+        guardado = guardar_snapshot(
 
-            event_id=evento["id"],
+            event_id=
+                evento["id"],
 
             fecha_evento=
                 evento["date"],
@@ -565,7 +570,7 @@ def guardar_odds_snapshot(
                 )
         )
 
-        return True
+        return guardado
 
     except Exception as error:
 
@@ -586,12 +591,13 @@ def guardar_values(
 ):
 
     guardados = 0
+    duplicados = 0
 
     for mercado in mercados:
 
         try:
 
-            guardar_value(
+            guardado = guardar_value(
 
                 event_id=
                     mercado[
@@ -644,7 +650,13 @@ def guardar_values(
                     ]
             )
 
-            guardados += 1
+            if guardado:
+
+                guardados += 1
+
+            else:
+
+                duplicados += 1
 
         except Exception as error:
 
@@ -653,7 +665,7 @@ def guardar_values(
                 f"{error}"
             )
 
-    return guardados
+    return guardados, duplicados
 
 
 # ============================================================
@@ -663,16 +675,32 @@ def guardar_values(
 def main():
 
     print("=" * 80)
+
     print(
         "BETMIND AI — VALUE SCANNER MASIVO"
     )
+
     print("=" * 80)
 
     print()
 
+    # ========================================================
+    # OBTENER EVENTOS
+    # ========================================================
+
     try:
 
         eventos = obtener_eventos()
+
+        # ----------------------------------------------------
+        # PRUEBA TEMPORAL
+        # Procesar solamente 3 eventos.
+        #
+        # Cuando confirmemos que todo funciona,
+        # eliminamos esta línea para volver a los 45/50.
+        # ----------------------------------------------------
+
+
 
     except Exception as error:
 
@@ -691,6 +719,10 @@ def main():
 
     print()
 
+    # ========================================================
+    # CARGAR EQUIPOS
+    # ========================================================
+
     print(
         "Cargando equipos históricos..."
     )
@@ -702,6 +734,12 @@ def main():
         f"{len(mapa)}"
     )
 
+    print()
+
+    # ========================================================
+    # CONTADORES
+    # ========================================================
+
     resultados = []
 
     sin_matching = 0
@@ -712,7 +750,9 @@ def main():
     snapshots_guardados = 0
     values_guardados = 0
 
-    print()
+    # ========================================================
+    # PROCESAR EVENTOS
+    # ========================================================
 
     for indice, evento in enumerate(
         eventos,
@@ -724,6 +764,10 @@ def main():
             f"{evento['home']} "
             f"vs "
             f"{evento['away']}"
+        )
+
+        print(
+            f"EVENT ID: {evento['id']}"
         )
 
         # ====================================================
@@ -743,6 +787,8 @@ def main():
             )
 
             sin_matching += 1
+
+            print()
 
             continue
 
@@ -769,6 +815,8 @@ def main():
 
             errores += 1
 
+            print()
+
             continue
 
         if resultado_v2 is None:
@@ -779,11 +827,28 @@ def main():
 
             sin_v2 += 1
 
+            print()
+
             continue
 
         print(
             "V2: OK"
         )
+
+        # ====================================================
+        # ESPERA ANTES DE ODDS
+        # ====================================================
+
+        if indice > 1:
+
+            print(
+                f"Esperando "
+                f"{ODDS_DELAY:.1f}s..."
+            )
+
+            time.sleep(
+                ODDS_DELAY
+            )
 
         # ====================================================
         # ODDS
@@ -797,6 +862,32 @@ def main():
                 )
             )
 
+        except requests.exceptions.HTTPError as error:
+
+            print(
+                f"ODDS: ERROR HTTP — "
+                f"{error}"
+            )
+
+            errores += 1
+
+            print()
+
+            continue
+
+        except requests.exceptions.RequestException as error:
+
+            print(
+                f"ODDS: ERROR REQUEST — "
+                f"{error}"
+            )
+
+            errores += 1
+
+            print()
+
+            continue
+
         except Exception as error:
 
             print(
@@ -805,6 +896,8 @@ def main():
             )
 
             errores += 1
+
+            print()
 
             continue
 
@@ -816,7 +909,13 @@ def main():
 
             sin_cuotas += 1
 
+            print()
+
             continue
+
+        # ====================================================
+        # EXTRAER 1X2
+        # ====================================================
 
         try:
 
@@ -834,6 +933,8 @@ def main():
 
             errores += 1
 
+            print()
+
             continue
 
         if cuotas is None:
@@ -843,6 +944,8 @@ def main():
             )
 
             sin_cuotas += 1
+
+            print()
 
             continue
 
@@ -863,6 +966,12 @@ def main():
 
             print(
                 "SNAPSHOT: guardado"
+            )
+
+        else:
+
+            print(
+                "SNAPSHOT: ya existente"
             )
 
         # ====================================================
@@ -897,10 +1006,11 @@ def main():
                 positivos
             )
 
-            cantidad_guardada = (
-                guardar_values(
-                    positivos
-                )
+            (
+                cantidad_guardada,
+                cantidad_duplicada
+            ) = guardar_values(
+                positivos
             )
 
             values_guardados += (
@@ -909,14 +1019,23 @@ def main():
 
             print(
                 f"VALUE SNAPSHOT: "
-                f"{cantidad_guardada} guardados"
+                f"{cantidad_guardada} nuevos"
             )
+
+            if cantidad_duplicada > 0:
+
+                print(
+                    f"VALUE DUPLICADO: "
+                    f"{cantidad_duplicada}"
+                )
 
         else:
 
             print(
                 "VALUE: ninguno"
             )
+
+        print()
 
     # ========================================================
     # ORDENAR
@@ -931,10 +1050,12 @@ def main():
     # RESUMEN
     # ========================================================
 
-    print()
-
     print("=" * 80)
-    print("RESUMEN")
+
+    print(
+        "RESUMEN"
+    )
+
     print("=" * 80)
 
     print()
@@ -986,18 +1107,24 @@ def main():
     print()
 
     print("=" * 80)
-    print("TOP VALUE")
+
+    print(
+        "TOP VALUE"
+    )
+
     print("=" * 80)
 
     if not resultados:
 
         print()
+
         print(
             "No se encontraron apuestas "
             "con EV positivo."
         )
 
         print()
+
         print("=" * 80)
 
         return
@@ -1014,26 +1141,30 @@ def main():
         f"EV"
     )
 
-    print("-" * 100)
+    print(
+        "-" * 100
+    )
 
     for indice, resultado in enumerate(
         resultados[:20],
         start=1
     ):
 
-        partido = (
+        partido_nombre = (
             f"{resultado['local']} "
             f"vs "
             f"{resultado['visitante']}"
         )
 
-        if len(partido) > 43:
+        if len(partido_nombre) > 43:
 
-            partido = partido[:43]
+            partido_nombre = (
+                partido_nombre[:43]
+            )
 
         print(
             f"{indice:<4}"
-            f"{partido:<45}"
+            f"{partido_nombre:<45}"
             f"{resultado['mercado']:<12}"
             f"{resultado['probabilidad'] * 100:>6.2f}% "
             f"{resultado['cuota']:<8.2f}"
@@ -1045,6 +1176,10 @@ def main():
 
     print("=" * 80)
 
+
+# ============================================================
+# EJECUCIÓN
+# ============================================================
 
 if __name__ == "__main__":
 

@@ -1,9 +1,13 @@
 import sqlite3
+from datetime import datetime
 
 from models.match import Match
 
 
 class Database:
+
+    HISTORICAL_LEAGUE_ID = 128
+    FINAL_STATUSES = {"FT", "AET", "PEN"}
 
     def __init__(self):
 
@@ -85,6 +89,58 @@ class Database:
         ))
 
         self.connection.commit()
+
+    def guardar_partido_historico(self, match: Match):
+
+        """Persist a validated, finished Argentina Primera LPF fixture.
+
+        Live and future fixtures intentionally use no persistence path into
+        ``matches``.  This table feeds the historical model.
+        """
+
+        if not self.es_partido_historico_valido(match):
+
+            raise ValueError(
+                "El partido no es un histórico finalizado válido de "
+                "Argentina Primera LPF."
+            )
+
+        self.guardar_partido(match)
+
+    @classmethod
+    def es_partido_historico_valido(cls, match: Match):
+
+        try:
+            fixture_id_valido = int(match.fixture_id) > 0
+        except (TypeError, ValueError):
+            fixture_id_valido = False
+
+        if not fixture_id_valido:
+            return False
+
+        if match.league_id != cls.HISTORICAL_LEAGUE_ID:
+            return False
+
+        if match.estado not in cls.FINAL_STATUSES:
+            return False
+
+        if (
+            match.goles_local is None
+            or match.goles_visitante is None
+        ):
+            return False
+
+        if not match.fecha:
+            return False
+
+        try:
+            datetime.fromisoformat(
+                str(match.fecha).replace("Z", "+00:00")
+            )
+        except ValueError:
+            return False
+
+        return True
 
     def obtener_partidos(self):
 

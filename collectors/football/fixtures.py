@@ -1,6 +1,5 @@
 from .client import FootballAPIClient
 from models.match import Match
-from database.database import Database
 
 
 def obtener_partidos():
@@ -8,9 +7,6 @@ def obtener_partidos():
     print("Obteniendo partidos...\n")
 
     api = FootballAPIClient()
-
-    db = Database()
-    db.crear_tabla_partidos()
 
     data = api.get_live_fixtures()
 
@@ -47,8 +43,6 @@ def obtener_partidos():
         )
 
         matches.append(match)
-
-        db.guardar_partido(match)
 
     return matches
 
@@ -90,13 +84,10 @@ def main():
 
     mostrar_partidos(partidos)
 
-    db = Database()
-
-    registros = db.obtener_partidos()
-
-    print(f"\nHay {len(registros)} partidos guardados en SQLite.")
-
-    db.cerrar()
+    print(
+        "\nLos partidos LIVE no se guardan en matches; "
+        "esa tabla es exclusivamente histórica."
+    )
 
 
 if __name__ == "__main__":

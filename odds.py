@@ -1,5 +1,7 @@
 import os
+import time
 import requests
+
 from dotenv import load_dotenv
 
 
@@ -13,6 +15,21 @@ LEAGUE = "argentina-primera-lpf-clausura"
 API_URL = "https://api.odds-api.io/v3/events"
 ODDS_URL = "https://api.odds-api.io/v3/odds"
 
+TIMEOUT = 15
+
+# Espera normal entre requests
+REQUEST_DELAY = 1.0
+
+# Reintentos ante errores temporales
+MAX_RETRIES = 4
+
+# Backoff:
+# intento 1 -> 2 segundos
+# intento 2 -> 4 segundos
+# intento 3 -> 8 segundos
+# intento 4 -> 16 segundos
+BACKOFF_BASE = 2
+
 
 # ============================================================
 # API KEY
@@ -25,11 +42,130 @@ def obtener_api_key():
     api_key = os.getenv("ODDS_API_KEY")
 
     if not api_key:
+
         raise RuntimeError(
             "No se encontró ODDS_API_KEY en .env"
         )
 
     return api_key
+
+
+# ============================================================
+# REQUEST ROBUSTA
+# ============================================================
+
+def request_get(
+    url,
+    params,
+    max_retries=MAX_RETRIES
+):
+
+    ultimo_error = None
+
+    for intento in range(max_retries + 1):
+
+        try:
+
+            respuesta = requests.get(
+                url,
+                params=params,
+                timeout=TIMEOUT
+            )
+
+            # ------------------------------------------------
+            # OK
+            # ------------------------------------------------
+
+            if respuesta.status_code == 200:
+
+                return respuesta
+
+            # ------------------------------------------------
+            # RATE LIMIT — 429
+            # ------------------------------------------------
+
+            if respuesta.status_code == 429:
+
+                retry_after = respuesta.headers.get(
+                    "Retry-After"
+                )
+
+                if retry_after:
+
+                    try:
+
+                        espera = float(
+                            retry_after
+                        )
+
+                    except ValueError:
+
+                        espera = (
+                            BACKOFF_BASE
+                            ** (intento + 1)
+                        )
+
+                else:
+
+                    espera = (
+                        BACKOFF_BASE
+                        ** (intento + 1)
+                    )
+
+                if intento >= max_retries:
+
+                    respuesta.raise_for_status()
+
+                print(
+                    f"    429 Too Many Requests "
+                    f"→ esperando {espera:.1f}s "
+                    f"(reintento {intento + 1}/{max_retries})"
+                )
+
+                time.sleep(
+                    espera
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # OTROS ERRORES HTTP
+            # ------------------------------------------------
+
+            respuesta.raise_for_status()
+
+            return respuesta
+
+        except requests.exceptions.RequestException as error:
+
+            ultimo_error = error
+
+            if intento >= max_retries:
+
+                raise
+
+            espera = (
+                BACKOFF_BASE
+                ** (intento + 1)
+            )
+
+            print(
+                f"    Error temporal de API "
+                f"→ esperando {espera:.1f}s "
+                f"(reintento {intento + 1}/{max_retries})"
+            )
+
+            time.sleep(
+                espera
+            )
+
+    if ultimo_error:
+
+        raise ultimo_error
+
+    raise RuntimeError(
+        "No se pudo completar la request."
+    )
 
 
 # ============================================================
@@ -47,13 +183,10 @@ def obtener_eventos():
         "limit": 50
     }
 
-    respuesta = requests.get(
+    respuesta = request_get(
         API_URL,
-        params=params,
-        timeout=15
+        params
     )
-
-    respuesta.raise_for_status()
 
     return respuesta.json()
 
@@ -62,7 +195,9 @@ def obtener_eventos():
 # OBTENER CUOTAS DE UN EVENTO
 # ============================================================
 
-def obtener_cuotas_evento(event_id):
+def obtener_cuotas_evento(
+    event_id
+):
 
     api_key = obtener_api_key()
 
@@ -72,13 +207,10 @@ def obtener_cuotas_evento(event_id):
         "bookmakers": BOOKMAKER
     }
 
-    respuesta = requests.get(
+    respuesta = request_get(
         ODDS_URL,
-        params=params,
-        timeout=15
+        params
     )
-
-    respuesta.raise_for_status()
 
     return respuesta.json()
 
@@ -102,6 +234,7 @@ def extraer_1x2(datos):
     for mercado in bookmaker:
 
         if mercado.get("name") != "ML":
+
             continue
 
         cuotas = mercado.get(
@@ -110,6 +243,7 @@ def extraer_1x2(datos):
         )
 
         if not cuotas:
+
             continue
 
         cuota = cuotas[0]
@@ -122,12 +256,21 @@ def extraer_1x2(datos):
                 "away"
             )
         ):
+
             continue
 
         return {
-            "local": float(cuota["home"]),
-            "empate": float(cuota["draw"]),
-            "visitante": float(cuota["away"])
+            "local": float(
+                cuota["home"]
+            ),
+
+            "empate": float(
+                cuota["draw"]
+            ),
+
+            "visitante": float(
+                cuota["away"]
+            )
         }
 
     return None
@@ -144,17 +287,28 @@ def buscar_evento(
 
     eventos = obtener_eventos()
 
-    local_busqueda = local.lower()
-    visitante_busqueda = visitante.lower()
+    local_busqueda = (
+        local.lower()
+    )
+
+    visitante_busqueda = (
+        visitante.lower()
+    )
 
     for evento in eventos:
 
         home = str(
-            evento.get("home", "")
+            evento.get(
+                "home",
+                ""
+            )
         ).lower()
 
         away = str(
-            evento.get("away", "")
+            evento.get(
+                "away",
+                ""
+            )
         ).lower()
 
         if (
@@ -166,6 +320,29 @@ def buscar_evento(
             return evento
 
     return None
+
+
+# ============================================================
+# OBTENER CUOTAS POR EVENT ID
+# ============================================================
+
+def obtener_cuotas_por_event_id(
+    event_id
+):
+
+    datos = obtener_cuotas_evento(
+        event_id
+    )
+
+    cuotas = extraer_1x2(
+        datos
+    )
+
+    if cuotas is None:
+
+        return None
+
+    return cuotas
 
 
 # ============================================================
@@ -183,17 +360,19 @@ def obtener_cuotas_partido(
     )
 
     if evento is None:
+
         return None
 
-    datos = obtener_cuotas_evento(
+    cuotas = obtener_cuotas_evento(
         evento["id"]
     )
 
-    cuotas = extraer_1x2(
-        datos
+    cuotas_1x2 = extraer_1x2(
+        cuotas
     )
 
-    if cuotas is None:
+    if cuotas_1x2 is None:
+
         return None
 
     return {
@@ -203,7 +382,7 @@ def obtener_cuotas_partido(
         "fecha": evento["date"],
         "estado": evento["status"],
         "bookmaker": BOOKMAKER,
-        "cuotas": cuotas
+        "cuotas": cuotas_1x2
     }
 
 
@@ -257,7 +436,9 @@ def main():
 
         return
 
-    cuotas = resultado["cuotas"]
+    cuotas = resultado[
+        "cuotas"
+    ]
 
     print()
     print("-" * 70)
@@ -277,26 +458,31 @@ def main():
     )
 
     print(
-        f"Bookmaker: {resultado['bookmaker']}"
+        f"Bookmaker: "
+        f"{resultado['bookmaker']}"
     )
 
     print()
     print("CUOTAS 1X2")
 
     print(
-        f"Local:      {cuotas['local']:.2f}"
+        f"Local:      "
+        f"{cuotas['local']:.2f}"
     )
 
     print(
-        f"Empate:     {cuotas['empate']:.2f}"
+        f"Empate:     "
+        f"{cuotas['empate']:.2f}"
     )
 
     print(
-        f"Visitante:  {cuotas['visitante']:.2f}"
+        f"Visitante:  "
+        f"{cuotas['visitante']:.2f}"
     )
 
     print("-" * 70)
 
 
 if __name__ == "__main__":
+
     main()
